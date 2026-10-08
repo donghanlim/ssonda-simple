@@ -80,7 +80,8 @@ const BANKS=[
  {id:'woori',full:'우리은행',name:'우리WON뱅킹',scheme:'NewSmartPib://',ios:'1470181651'},
  {id:'hana',full:'하나은행',name:'하나원큐',scheme:'hanabank://',ios:'6743190232'},
  {id:'ibk',full:'기업은행',name:'i-ONE뱅크',scheme:'IBKBANK://',ios:'1460543865'},
- {id:'gwangju',full:'광주은행',name:'광주은행',scheme:'gwangju://',ios:'1576149106',pkg:'com.kjbank.asb.pbanking'}
+ {id:'gwangju',full:'광주은행',name:'광주은행',scheme:'gwangju://',ios:'1576149106',pkg:'com.kjbank.asb.pbanking'},
+ {id:'cu',full:'신협',name:'신협 온뱅크',scheme:null,ios:'1484456647',pkg:'kr.co.cu.onbank'}
 ];
 const $=s=>document.querySelector(s);
 const bank=id=>BANKS.find(b=>b.id===id);
@@ -96,9 +97,10 @@ const digits=s=>String(s||'').replace(/\D/g,'');
 const fmt=d=>d.replace(/(\d{4})(?=\d)/g,'$1 ');
 
 function openBank(b,acct){
-  copy(acct).then(ok=>toast(ok?'계좌번호가 복사됐어요':'복사 실패 - 계좌번호를 눌러 직접 복사하세요'));
+  copy(acct).then(ok=>toast(ok?(b.scheme?'계좌번호가 복사됐어요':'계좌번호 복사됨 - 스토어에서 \'열기\'를 누르세요'):'복사 실패 - 계좌번호를 눌러 직접 복사하세요'));
   const store=isIOS?'https://apps.apple.com/kr/app/id'+b.ios
     :'https://play.google.com/store/'+(b.pkg?'apps/details?id='+b.pkg:'search?c=apps&q='+encodeURIComponent(b.name));
+  if(!b.scheme){location.href=store;return}
   if(isAndroid&&b.pkg){ // 미설치 시 Chrome이 해당 앱의 Play 스토어로 이동
     const s=b.scheme.replace('://','');
     location.href='intent://#Intent;scheme='+s+';package='+b.pkg+';S.browser_fallback_url='+encodeURIComponent(store)+';end';
