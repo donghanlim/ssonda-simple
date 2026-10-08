@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>쏜다 - 계좌이체 QR</title>
+<style>
+:root{--bg:#fffdf7;--fg:#1b2430;--mu:#6b7380;--pr:#1c4b8f;--ln:#e4dfd2;--cd:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#14181f;--fg:#eef1f5;--mu:#98a1ae;--pr:#6ea0ec;--ln:#2a313c;--cd:#1c222b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+main{max-width:480px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:22px;margin:8px 0 4px}h2{font-size:17px;margin:0 0 8px}
+.mu{color:var(--mu);font-size:14px}
+.card{background:var(--cd);border:1px solid var(--ln);border-radius:14px;padding:16px;margin:14px 0}
+label{display:block;font-size:14px;margin:12px 0 4px}
+input,select{width:100%;padding:12px;font-size:16px;border:1px solid var(--ln);border-radius:10px;background:var(--bg);color:var(--fg)}
+button{font:inherit;cursor:pointer}
+.pr{width:100%;margin-top:16px;padding:14px;border:0;border-radius:10px;background:var(--pr);color:#fff;font-weight:700}
+.sc{padding:10px 14px;border:1px solid var(--ln);border-radius:10px;background:var(--cd);color:var(--fg)}
+#qr{display:flex;justify-content:center;padding:12px;background:#fff;border-radius:10px;margin:8px 0}
+#qr img,#qr canvas{max-width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.bk{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--ln);border-radius:12px;background:var(--cd);color:var(--fg);text-align:left}
+.bk img{width:32px;height:32px;border-radius:8px;flex:none}
+.acct{font-size:22px;font-weight:700;letter-spacing:.5px;word-break:break-all}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1b2430;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;transition:.2s;pointer-events:none}
+#toast.on{opacity:1}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+
+<section id="make">
+  <h1>계좌이체 QR 만들기</h1>
+  <p class="mu">계좌번호를 넣으면 QR이 만들어져요. 손님이 QR을 찍으면 은행 앱이 열리고 계좌번호가 복사돼요.</p>
+  <div class="card">
+    <label for="n">상호명 (선택)</label><input id="n" maxlength="30" placeholder="예: 화순 꽃집">
+    <label for="r">받는 은행</label><select id="r"></select>
+    <label for="a">계좌번호</label><input id="a" inputmode="numeric" placeholder="숫자만 또는 - 포함">
+    <label for="h">예금주 (선택)</label><input id="h" maxlength="20" placeholder="예: 홍길동">
+    <button class="pr" id="go">QR 만들기</button>
+  </div>
+  <div class="card hide" id="out">
+    <h2>손님용 QR</h2>
+    <div id="qr"></div>
+    <p class="mu" id="lk" style="word-break:break-all"></p>
+    <div class="row"><button class="sc" id="sv">QR 이미지 저장</button><button class="sc" id="cl">링크 복사</button></div>
+    <p class="mu">QR과 링크에 계좌번호가 그대로 담겨요. 이 서비스는 입력값을 서버에 저장하지 않아요.</p>
+  </div>
+</section>
+
+<section id="pay" class="hide">
+  <h1 id="pt">계좌이체</h1>
+  <div class="card">
+    <div class="mu" id="pb"></div>
+    <div class="acct" id="pa"></div>
+    <div class="mu" id="ph"></div>
+    <button class="sc" id="pc" style="margin-top:10px;width:100%">계좌번호 복사</button>
+  </div>
+  <h2>내가 쓰는 은행을 고르세요</h2>
+  <p class="mu">누르면 계좌번호가 복사되고 은행 앱이 열려요. 앱이 없으면 설치 화면으로 가요. 앱에서 계좌번호를 붙여넣으세요.</p>
+  <div class="grid" id="bl"></div>
+</section>
+
+</main>
+<div id="toast"></div>
+<script src="vendor/qrcode.min.js"></script>
+<script>
+// 앱 스킴·스토어 ID는 실기기 검증 전 값이에요(은행 앱 업데이트로 바뀔 수 있음). 틀려도 스토어로 넘어가요.
+const BANKS=[
+ {id:'toss',full:'토스',name:'토스',scheme:'supertoss://',ios:'839333328',pkg:'viva.republica.toss'},
+ {id:'kakao',full:'카카오뱅크',name:'카카오뱅크',scheme:'kakaobank://',ios:'1258016944',pkg:'com.kakaobank.channel'},
+ {id:'kbank',full:'케이뱅크',name:'케이뱅크',scheme:'kbanktoktok://',ios:'1178872627',pkg:'com.kbankwith.smartbank'},
+ {id:'kb',full:'국민은행',name:'KB스타뱅킹',scheme:'kbbank://',ios:'373742138'},
+ {id:'nh',full:'농협은행',name:'NH스마트뱅킹',scheme:'com.nonghyup.nhsmartbanking://',ios:'1444712671',pkg:'com.nonghyup.nhsmartbanking'},
+ {id:'shinhan',full:'신한은행',name:'신한 SOL뱅크',scheme:'shinhan-sr-ansimclick://',ios:'357484932'},
+ {id:'woori',full:'우리은행',name:'우리WON뱅킹',scheme:'NewSmartPib://',ios:'1470181651'},
+ {id:'hana',full:'하나은행',name:'하나원큐',scheme:'hanabank://',ios:'6743190232'},
+ {id:'ibk',full:'기업은행',name:'i-ONE뱅크',scheme:'IBKBANK://',ios:'1460543865'},
+ {id:'gwangju',full:'광주은행',name:'광주은행',scheme:'gwangju://',ios:'1576149106',pkg:'com.kjbank.asb.pbanking'}
+];
+const $=s=>document.querySelector(s);
+const bank=id=>BANKS.find(b=>b.id===id);
+const isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+const isAndroid=/Android/i.test(navigator.userAgent);
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),1800)}
+async function copy(t){
+  try{await navigator.clipboard.writeText(t);return true}catch(e){}
+  const x=document.createElement('textarea');x.value=t;x.style.position='fixed';x.style.opacity='0';document.body.appendChild(x);x.select();
+  let ok=false;try{ok=document.execCommand('copy')}catch(e){}x.remove();return ok;
+}
+const digits=s=>String(s||'').replace(/\D/g,'');
+const fmt=d=>d.replace(/(\d{4})(?=\d)/g,'$1 ');
+
+function openBank(b,acct){
+  copy(acct).then(ok=>toast(ok?'계좌번호가 복사됐어요':'복사 실패 - 계좌번호를 눌러 직접 복사하세요'));
+  const store=isIOS?'https://apps.apple.com/kr/app/id'+b.ios
+    :'https://play.google.com/store/'+(b.pkg?'apps/details?id='+b.pkg:'search?c=apps&q='+encodeURIComponent(b.name));
+  if(isAndroid&&b.pkg){ // 미설치 시 Chrome이 해당 앱의 Play 스토어로 이동
+    const s=b.scheme.replace('://','');
+    location.href='intent://#Intent;scheme='+s+';package='+b.pkg+';S.browser_fallback_url='+encodeURIComponent(store)+';end';
+    return;
+  }
+  let left=false;const mark=()=>{left=true};
+  document.addEventListener('visibilitychange',mark,{once:true});window.addEventListener('pagehide',mark,{once:true});
+  setTimeout(()=>{ if(!left&&!document.hidden) location.href=store },1600);
+  location.href=b.scheme;
+}
+
+function showPay(p){
+  $('#make').classList.add('hide');$('#pay').classList.remove('hide');
+  const acct=digits(p.get('a'));const rb=bank(p.get('r'));
+  $('#pt').textContent=(p.get('n')||'계좌이체')+' 입금';
+  $('#pb').textContent=rb?rb.full+' 계좌':'';
+  $('#pa').textContent=fmt(acct);
+  $('#ph').textContent=p.get('h')?'예금주 '+p.get('h'):'';
+  $('#pc').onclick=()=>copy(acct).then(ok=>toast(ok?'계좌번호가 복사됐어요':'복사 실패'));
+  $('#pa').onclick=$('#pc').onclick;
+  $('#bl').innerHTML=BANKS.map(b=>`<button class="bk" data-id="${b.id}"><img src="assets/banks/${b.id}.svg" alt="">${b.name}</button>`).join('');
+  $('#bl').onclick=e=>{const k=e.target.closest('.bk');if(k)openBank(bank(k.dataset.id),acct)};
+}
+
+function showMake(){
+  $('#r').innerHTML=BANKS.map(b=>`<option value="${b.id}">${b.full}</option>`).join('');
+  $('#go').onclick=()=>{
+    const a=digits($('#a').value);
+    if(a.length<8||a.length>16){toast('계좌번호는 숫자 8~16자리예요');return}
+    const q=new URLSearchParams({r:$('#r').value,a});
+    if($('#n').value.trim())q.set('n',$('#n').value.trim());
+    if($('#h').value.trim())q.set('h',$('#h').value.trim());
+    const url=location.origin+location.pathname+'#'+q.toString();
+    $('#qr').innerHTML='';
+    new QRCode($('#qr'),{text:url,width:240,height:240,correctLevel:QRCode.CorrectLevel.M});
+    $('#lk').textContent=url;$('#out').classList.remove('hide');
+    $('#cl').onclick=()=>copy(url).then(ok=>toast(ok?'링크가 복사됐어요':'복사 실패'));
+    $('#sv').onclick=()=>{
+      const c=$('#qr canvas'),i=$('#qr img');const src=i&&i.src?i.src:c.toDataURL('image/png');
+      const l=document.createElement('a');l.href=src;l.download='ssonda-qr.png';l.click();
+    };
+    $('#out').scrollIntoView({behavior:'smooth'});
+  };
+}
+
+const p=new URLSearchParams(location.hash.slice(1));
+if(p.get('a')&&digits(p.get('a')).length>=8)showPay(p);else showMake();
+window.addEventListener('hashchange',()=>location.reload());
+</script>
+</body>
+</html>
